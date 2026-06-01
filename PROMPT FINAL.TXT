@@ -1,0 +1,70 @@
+Hola Claude. Necesito tu ayuda como Expert Full-Stack Developer para rescatar y elevar a nivel "Premium" el proyecto "Gastos App" (nuestro Expense Tracker). Conoces la arquitectura base del proyecto, pero recientemente estuve interactuando con otro asistente (Gemini) para automatizar el setup y agregar funcionalidades, y el proyecto terminó en un estado completamente roto e inestable debido a una serie de parches mal aplicados, scripts truncados y destrucción de la arquitectura modular.
+
+Tu objetivo es hacer un Hard Reset conceptual, limpiar toda la basura generada, y entregar un ÚNICO script Bash maestro (All-In-One) que regenere el proyecto desde cero, instalando dependencias, creando la estructura correcta y escribiendo el código de cada archivo sin omitir absolutamente nada.
+
+PARTE 1: EL DESASTRE QUE DEBES REVERTIR (QUÉ SALIÓ MAL)
+Para que entiendas el estado actual y no repitas estos errores, esto es lo que el otro asistente arruinó:
+
+Destrucción de la Arquitectura Modular: Ignoró mi estructura existente (donde teníamos MainPage.tsx, /components/Dashboard/, /components/Expenses/, /store/uiStore.ts, etc.) y condensó todo en un App.tsx y un Dashboard.tsx monolíticos e inmanejables.
+
+Errores de Alias en Vite (@/): Al mover archivos de lugar e inyectar código mediante Bash, rompió la resolución de dependencias de Vite (Failed to resolve import...), haciendo que no encontrara librerías como lucide-react ni los componentes locales.
+
+Scripts Bash Truncados (EOF): Generó un parche gigante que excedió su límite de tokens. El bloque cat << 'EOF' se cortó por la mitad, inyectando código React con errores de sintaxis catastróficos que rompieron el import-analysis de Vite por completo.
+
+Idas y Vueltas con el Estado: Implementó una lógica "Offline-First", luego la borró, luego la intentó poner de nuevo, dejando el estado de Zustand inconsistente entre lo que hay en memoria y lo que va a Google Sheets.
+
+PARTE 2: LOS FIXES CRÍTICOS QUE DEBES MANTENER (QUÉ SALIÓ BIEN)
+A pesar del desastre, logramos hacer funcionar perfectamente la conexión a Google Sheets y la autenticación. ESTO ES CRÍTICO Y DEBES INCLUIRLO EN TU CÓDIGO:
+
+Google Auth Scopes: El login daba un error HTTP 401 al intentar obtener el perfil del usuario porque solo pedíamos permisos de Sheets. DEBES usar exactamente esta cadena de scopes en el servicio de autenticación:
+const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email';
+
+Setup Bash Desatendido: Para que el CLI de Vite no bloquee la terminal interactiva preguntando "Install with npm and start now?", el script Bash debe crear el package.json manualmente primero y luego ejecutar npm install.
+
+PARTE 3: REQUERIMIENTOS CORE DE LA NUEVA VERSIÓN
+Debes reconstruir la aplicación respetando nuestra arquitectura modular y aplicando los siguientes requerimientos de forma estricta:
+
+3.1. Localización y UI (Argentinización)
+Idioma: Toda la interfaz, alertas y placeholders deben estar en Español (Argentina).
+
+Moneda: Todos los montos deben mostrarse con el formato $ARS (ejemplo: $ 1.500,00 ARS). El input para ingresar gastos numéricos debe ser limpio, sin íconos fijos de moneda que molesten.
+
+Diseño: Mantener el estilo Glassmorphism Premium, Tailwind CSS, Dark Mode soportado, y un Botón Flotante (FAB) moderno para el "Add Expense".
+
+3.2. Arquitectura Offline-First (Zustand + Sheets)
+La aplicación no debe depender de internet para funcionar en el momento.
+
+Flujo exacto:
+
+El usuario guarda un gasto.
+
+Se impacta el estado expenses de Zustand (que persiste instantáneamente en LocalStorage) para que la UI se actualice en milisegundos.
+
+El gasto se agrega a un array syncQueue dentro del mismo store.
+
+Un useEffect en el layout principal debe ejecutarse cada 5 minutos (y al iniciar la app) intentando enviar la syncQueue a Google Sheets en un solo lote (appendMultipleExpensesToSheet). Si tiene éxito, se eliminan esos IDs de la cola.
+
+3.3. IA y OCR (Gemini Pro Vision)
+Mantener la integración del componente de la cámara. Al sacar/subir una foto de un recibo, se pasa a Base64 y se envía al proxy Serverless (/api/parse-receipt de Vercel).
+
+El proxy usa la API de Gemini para devolver: { concept, total, items }.
+
+PARTE 4: NUEVAS FUNCIONALIDADES PREMIUM (REFACTORIZACIÓN)
+4.1. Súper Dashboard y Filtros
+El Dashboard debe estar separado en solapas (Tabs) limpias y profesionales:
+
+Resumen: Gráficos estadísticos con recharts (Distribución por medio de pago, gastos por usuario, total del mes).
+
+Historial (Expense List): Una lista detallada de los consumos. Debe incluir un buscador potente (por concepto) y filtros combinados (por rango de fechas y por medio de pago).
+
+4.2. Funcionalidad de Exportación a PDF
+Agrega un botón en la vista del Historial que permita "Exportar Reporte".
+
+Al hacer clic, debe generar un PDF profesional (puedes usar jspdf y jspdf-autotable, agrégalos al package.json) que respete los filtros aplicados en ese momento en la UI. El PDF debe incluir el total filtrado y la tabla de gastos.
+
+4.3. Grupos Familiares / Gastos Compartidos
+Pensando en un producto de primer nivel, asume que la planilla de Google Sheets está compartida con la familia.
+
+Agrega a la UI del Dashboard un "Toggle" o Selector que permita cambiar entre "Mis Gastos" (filtrando donde expense.user === currentUser.name) y "Gastos Familiares" (mostrando todos los registros del array global).
+
+El gráfico de torta en modo familiar debería mostrar "Gastos por Integrante".
