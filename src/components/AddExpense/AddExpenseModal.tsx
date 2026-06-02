@@ -22,9 +22,10 @@ export default function AddExpenseModal() {
     data: ExpenseFormData,
     location: GeoLocation | null,
     receiptUrl: string | null,
-    aiConfidence: number | null
+    aiConfidence: number | null,
+    items?: Array<{ name: string; price: number }>
   ) => {
-    await addNewExpense(data, location, receiptUrl, aiConfidence);
+    await addNewExpense(data, location, receiptUrl, aiConfidence, items);
     closeAddModal();
   };
 

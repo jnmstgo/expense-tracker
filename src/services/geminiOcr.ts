@@ -1,20 +1,9 @@
 import type { ReceiptData } from '@/types';
-
-const PROMPT = `You are a receipt parser. Extract data from this receipt image and return ONLY a valid JSON object — no markdown, no explanation, no code blocks. Use this exact schema:
-{
-  "merchant": "store or restaurant name",
-  "date": "YYYY-MM-DD",
-  "total": 0.00,
-  "currency": "USD",
-  "items": [
-    { "name": "item description", "price": 0.00 }
-  ],
-  "confidence": 0.95
-}
-If you cannot read a field, use null. The confidence field should be 0.0-1.0 based on image quality.`;
+import { buildPrompt, cleanGeminiOutput } from '@/utils/ocrPrompt';
 
 export async function scanReceiptWithAI(
-  file: File
+  file: File,
+  defaultCurrency?: string
 ): Promise<ReceiptData> {
   const base64 = await fileToBase64(file);
 
@@ -23,7 +12,7 @@ export async function scanReceiptWithAI(
     const res = await fetch('/api/gemini-ocr', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: base64, mimeType: file.type }),
+      body: JSON.stringify({ image: base64, mimeType: file.type, defaultCurrency }),
     });
 
     if (res.ok) {
@@ -49,7 +38,7 @@ export async function scanReceiptWithAI(
         contents: [{
           parts: [
             { inlineData: { mimeType: file.type, data: base64 } },
-            { text: PROMPT },
+            { text: buildPrompt(defaultCurrency) },
           ],
         }],
         generationConfig: {
@@ -74,11 +63,7 @@ export async function scanReceiptWithAI(
 
   const geminiData = await geminiRes.json() as any;
   const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-  const cleaned = rawText
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim();
+  const cleaned = cleanGeminiOutput(rawText);
 
   try {
     return JSON.parse(cleaned) as ReceiptData;

@@ -3,9 +3,9 @@ import { v4 as uuid } from 'uuid';
 import { useAuthStore } from '@/store/authStore';
 import { useExpenseStore } from '@/store/expenseStore';
 import { useUiStore } from '@/store/uiStore';
-import { appendExpense, fetchExpenses, deleteExpenseRow } from '@/services/googleSheets';
+import { appendExpense, fetchExpenses, deleteExpenseRow, fetchMerchants, saveMerchant, fetchCustomCategories, saveCustomCategories } from '@/services/googleSheets';
 import { savePendingExpense, flushPendingExpenses, getCachedExpenses, setCachedExpenses, getPendingExpenses } from '@/services/offlineManager';
-import type { Expense, ExpenseFormData, GeoLocation } from '@/types';
+import type { Expense, ExpenseFormData, GeoLocation, Merchant } from '@/types';
 
 /**
  * Merges Google Sheets data and locally stored pending offline expenses.
@@ -26,7 +26,7 @@ export function useExpenses() {
   } = useExpenseStore();
   const { showNotification } = useUiStore();
 
-  // Load expenses from Sheets (or cache) on mount
+  // Load expenses, merchants, and categories from Sheets (or cache) on mount
   const loadExpenses = useCallback(async () => {
     const cached = getCachedExpenses();
     const pending = getPendingExpenses();
@@ -34,16 +34,37 @@ export function useExpenses() {
     // Set initial merged state from local storage immediately for speed
     setExpenses(mergeExpenses(pending, cached));
 
+    // Load merchants and categories from localStorage if present
+    try {
+      const cachedMerchants = JSON.parse(localStorage.getItem('expense_tracker_merchants') ?? '[]');
+      const cachedCategories = JSON.parse(localStorage.getItem('expense_tracker_categories') ?? '[]');
+      if (cachedMerchants.length > 0) useExpenseStore.getState().setMerchants(cachedMerchants);
+      if (cachedCategories.length > 0) useExpenseStore.getState().setCustomCategories(cachedCategories);
+    } catch (e) {}
+
     if (!user?.spreadsheetId || !isTokenValid()) {
       return;
     }
     
     setLoading(true);
     try {
-      const data = await fetchExpenses(user.accessToken, user.spreadsheetId, user.id);
-      setCachedExpenses(data);
-      // Merge spreadsheet data with local pending items
-      setExpenses(mergeExpenses(getPendingExpenses(), data));
+      const [expensesData, merchantsData, categoriesData] = await Promise.all([
+        fetchExpenses(user.accessToken, user.spreadsheetId, user.id),
+        fetchMerchants(user.accessToken, user.spreadsheetId).catch(() => []),
+        fetchCustomCategories(user.accessToken, user.spreadsheetId).catch(() => [])
+      ]);
+
+      setCachedExpenses(expensesData);
+      setExpenses(mergeExpenses(getPendingExpenses(), expensesData));
+
+      if (merchantsData.length > 0) {
+        useExpenseStore.getState().setMerchants(merchantsData);
+        localStorage.setItem('expense_tracker_merchants', JSON.stringify(merchantsData));
+      }
+      if (categoriesData.length > 0) {
+        useExpenseStore.getState().setCustomCategories(categoriesData);
+        localStorage.setItem('expense_tracker_categories', JSON.stringify(categoriesData));
+      }
     } catch (err) {
       console.error('Load expenses error:', err);
       showNotification('Using cached data (offline mode)', 'info');
@@ -59,7 +80,8 @@ export function useExpenses() {
     formData: ExpenseFormData,
     location: GeoLocation | null,
     receiptUrl: string | null,
-    aiConfidence: number | null
+    aiConfidence: number | null,
+    items?: Array<{ name: string; price: number }>
   ) => {
     if (!user) return;
 
@@ -79,6 +101,8 @@ export function useExpenses() {
       aiConfidence,
       createdAt:    new Date().toISOString(),
       synced:       false,
+      items:        items || [],
+      address:      formData.address?.trim() || null
     };
 
     // Prepend to active store list
@@ -155,5 +179,40 @@ export function useExpenses() {
     }
   }, [user, isTokenValid, setSyncing, showNotification, loadExpenses]);
 
-  return { expenses, isLoading, isSyncing, addNewExpense, deleteExpense, syncPending, loadExpenses };
+  // Save new merchant
+  const addMerchantToSheets = useCallback(async (merchant: Merchant) => {
+    useExpenseStore.getState().addMerchant(merchant);
+    const current = useExpenseStore.getState().merchants;
+    localStorage.setItem('expense_tracker_merchants', JSON.stringify(current));
+    if (!user?.spreadsheetId || !isTokenValid()) return;
+    try {
+      await saveMerchant(user.accessToken, user.spreadsheetId, merchant);
+    } catch (e) {
+      console.warn('Failed to save merchant to sheets:', e);
+    }
+  }, [user, isTokenValid]);
+
+  // Save custom categories
+  const updateCategories = useCallback(async (newCategories: string[]) => {
+    useExpenseStore.getState().setCustomCategories(newCategories);
+    localStorage.setItem('expense_tracker_categories', JSON.stringify(newCategories));
+    if (!user?.spreadsheetId || !isTokenValid()) return;
+    try {
+      await saveCustomCategories(user.accessToken, user.spreadsheetId, newCategories);
+    } catch (e) {
+      console.warn('Failed to save categories to sheets:', e);
+    }
+  }, [user, isTokenValid]);
+
+  return { 
+    expenses, 
+    isLoading, 
+    isSyncing, 
+    addNewExpense, 
+    deleteExpense, 
+    syncPending, 
+    loadExpenses,
+    addMerchantToSheets,
+    updateCategories
+  };
 }

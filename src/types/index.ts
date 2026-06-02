@@ -71,7 +71,7 @@ export const EXPENSE_CATEGORIES = [
   'Other',
 ] as const;
 
-export type ExpenseCategory = typeof EXPENSE_CATEGORIES[number];
+export type ExpenseCategory = string;
 
 export interface Expense {
   id: string;
@@ -89,6 +89,8 @@ export interface Expense {
   aiConfidence: number | null;
   createdAt: string;
   synced: boolean;
+  items?: Array<{ name: string; price: number }>;
+  address?: string | null;
 }
 
 export interface ExpenseFormData {
@@ -97,6 +99,15 @@ export interface ExpenseFormData {
   category: ExpenseCategory;
   merchant: string;
   description: string;
+  address?: string;
+}
+
+export interface Merchant {
+  name: string;
+  defaultCategory: string;
+  locationLat: number | null;
+  locationLng: number | null;
+  city: string | null;
 }
 
 export interface ReceiptData {
@@ -106,6 +117,8 @@ export interface ReceiptData {
   currency: string;
   items: Array<{ name: string; price: number }>;
   confidence: number;
+  address?: string | null;
+  receiptUrl?: string | null;
 }
 
 export interface GeoLocation {
@@ -117,8 +130,13 @@ export interface GeoLocation {
 export interface ExpenseFilters {
   startDate: string;
   endDate: string;
-  category: ExpenseCategory | '';
+  categories: string[];
+  currencies: string[];
+  minAmount: string;
+  maxAmount: string;
   search: string;
+  hasReceiptDetails: boolean | null;
+  sortBy: 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc';
 }
 
 export interface MonthlySummary {

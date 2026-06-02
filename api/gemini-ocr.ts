@@ -1,19 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { buildPrompt, cleanGeminiOutput } from '../src/utils/ocrPrompt';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-
-const PROMPT = `You are a receipt parser. Extract data from this receipt image and return ONLY a valid JSON object — no markdown, no explanation, no code blocks. Use this exact schema:
-{
-  "merchant": "store or restaurant name",
-  "date": "YYYY-MM-DD",
-  "total": 0.00,
-  "currency": "USD",
-  "items": [
-    { "name": "item description", "price": 0.00 }
-  ],
-  "confidence": 0.95
-}
-If you cannot read a field, use null. The confidence field should be 0.0-1.0 based on image quality.`;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Handle CORS preflight
@@ -28,7 +16,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'GEMINI_API_KEY environment variable not set' });
   }
 
-  const { image, mimeType } = req.body as { image?: string; mimeType?: string };
+  const { image, mimeType, defaultCurrency } = req.body as { image?: string; mimeType?: string; defaultCurrency?: string };
 
   if (!image || !mimeType) {
     return res.status(400).json({ error: 'Missing image or mimeType in request body' });
@@ -49,7 +37,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           contents: [{
             parts: [
               { inlineData: { mimeType, data: image } },
-              { text: PROMPT },
+              { text: buildPrompt(defaultCurrency) },
             ],
           }],
           generationConfig: {
@@ -91,13 +79,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-
-    // Strip any accidental markdown code fences
-    const cleaned = rawText
-      .replace(/^```jsons*/i, '')
-      .replace(/^```s*/i, '')
-      .replace(/s*```$/i, '')
-      .trim();
+    const cleaned = cleanGeminiOutput(rawText);
 
     let parsed: unknown;
     try {

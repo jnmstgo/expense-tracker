@@ -1,4 +1,4 @@
-import type { Expense } from '@/types';
+import type { Expense, Merchant } from '@/types';
 
 // Spreadsheet headers matching Expense keys
 const HEADERS = [
@@ -15,7 +15,8 @@ const HEADERS = [
   'city',
   'receiptUrl',
   'aiConfidence',
-  'createdAt'
+  'createdAt',
+  'address'
 ];
 
 /**
@@ -43,7 +44,9 @@ export async function getOrCreateSpreadsheet(
 
   const searchData = await searchRes.json();
   if (searchData.files && searchData.files.length > 0) {
-    return searchData.files[0].id;
+    const spreadsheetId = searchData.files[0].id;
+    await ensureSheetsInitialized(accessToken, spreadsheetId);
+    return spreadsheetId;
   }
 
   // Create new spreadsheet
@@ -85,6 +88,7 @@ export async function getOrCreateSpreadsheet(
     console.warn('Could not write column headers, proceeding anyway');
   }
 
+  await ensureSheetsInitialized(accessToken, spreadsheetId);
   return spreadsheetId;
 }
 
@@ -110,10 +114,11 @@ export async function appendExpense(
     expense.city || '',
     expense.receiptUrl || '',
     expense.aiConfidence !== null ? expense.aiConfidence : '',
-    expense.createdAt
+    expense.createdAt,
+    expense.address || ''
   ];
 
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A:N:append?valueInputOption=USER_ENTERED`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A:O:append?valueInputOption=USER_ENTERED`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -131,6 +136,29 @@ export async function appendExpense(
     throw new Error('Error al guardar en Google Sheets');
   }
 
+  if (expense.items && expense.items.length > 0) {
+    try {
+      const itemRows = expense.items.map(item => [
+        Math.random().toString(36).substring(2, 9),
+        expense.id,
+        item.name,
+        item.price,
+        expense.createdAt
+      ]);
+      const itemsUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/ReceiptItems!A:E:append?valueInputOption=USER_ENTERED`;
+      await fetch(itemsUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ values: itemRows })
+      });
+    } catch (e) {
+      console.warn('Could not append receipt items:', e);
+    }
+  }
+
   return res.json();
 }
 
@@ -143,38 +171,69 @@ export async function fetchExpenses(
   spreadsheetId: string,
   _userId: string
 ): Promise<Expense[]> {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A2:N`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` }
-  });
+  const mainUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A2:O`;
+  const itemsUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/ReceiptItems!A2:E`;
 
-  if (!res.ok) {
-    const err = await res.text();
+  const [mainRes, itemsRes] = await Promise.all([
+    fetch(mainUrl, { headers: { Authorization: `Bearer ${accessToken}` } }),
+    fetch(itemsUrl, { headers: { Authorization: `Bearer ${accessToken}` } }).catch(() => null)
+  ]);
+
+  if (!mainRes.ok) {
+    const err = await mainRes.text();
     console.error('Failed to fetch spreadsheet rows:', err);
     throw new Error('Error al obtener datos de Google Sheets');
   }
 
-  const data = await res.json();
-  const rows = data.values || [];
+  const mainData = await mainRes.json();
+  const mainRows = mainData.values || [];
 
-  return rows
-    .map((row: any[]) => ({
-      id:           row[0] || '',
-      userId:       row[1] || '',
-      timestamp:    row[2] || '',
-      amount:       parseFloat(row[3]) || 0,
-      currency:     row[4] || '',
-      category:     row[5] || 'Other',
-      merchant:     row[6] || '',
-      description:  row[7] || '',
-      locationLat:  row[8] !== undefined && row[8] !== '' ? parseFloat(row[8]) : null,
-      locationLng:  row[9] !== undefined && row[9] !== '' ? parseFloat(row[9]) : null,
-      city:         row[10] || null,
-      receiptUrl:   row[11] || null,
-      aiConfidence: row[12] !== undefined && row[12] !== '' ? parseFloat(row[12]) : null,
-      createdAt:    row[13] || '',
-      synced:       true
-    }));
+  let itemRows: any[] = [];
+  if (itemsRes && itemsRes.ok) {
+    try {
+      const itemsData = await itemsRes.json();
+      itemRows = itemsData.values || [];
+    } catch (e) {
+      console.warn('Could not parse receipt items values:', e);
+    }
+  }
+
+  const itemsByExpenseId: Record<string, Array<{ name: string; price: number }>> = {};
+  for (const row of itemRows) {
+    const expenseId = row[1];
+    const name = row[2] || '';
+    const price = parseFloat(row[3]) || 0;
+    if (expenseId) {
+      if (!itemsByExpenseId[expenseId]) {
+        itemsByExpenseId[expenseId] = [];
+      }
+      itemsByExpenseId[expenseId].push({ name, price });
+    }
+  }
+
+  return mainRows
+    .map((row: any[]) => {
+      const id = row[0] || '';
+      return {
+        id,
+        userId:       row[1] || '',
+        timestamp:    row[2] || '',
+        amount:       parseFloat(row[3]) || 0,
+        currency:     row[4] || '',
+        category:     row[5] || 'Other',
+        merchant:     row[6] || '',
+        description:  row[7] || '',
+        locationLat:  row[8] !== undefined && row[8] !== '' ? parseFloat(row[8]) : null,
+        locationLng:  row[9] !== undefined && row[9] !== '' ? parseFloat(row[9]) : null,
+        city:         row[10] || null,
+        receiptUrl:   row[11] || null,
+        aiConfidence: row[12] !== undefined && row[12] !== '' ? parseFloat(row[12]) : null,
+        createdAt:    row[13] || '',
+        synced:       true,
+        items:        itemsByExpenseId[id] || [],
+        address:      row[14] || null
+      };
+    });
 }
 
 /**
@@ -249,5 +308,252 @@ export async function deleteExpenseRow(
     throw new Error('Failed to delete expense row from Google Sheets');
   }
 
+  // Delete items linked to this expense
+  try {
+    const readUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/ReceiptItems!B:B`;
+    const readRes = await fetch(readUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (readRes.ok) {
+      const readData = await readRes.json();
+      const rows = readData.values || [];
+      const indicesToDelete: number[] = [];
+      rows.forEach((row: any[], idx: number) => {
+        if (row[0] === id) {
+          indicesToDelete.push(idx);
+        }
+      });
+
+      if (indicesToDelete.length > 0) {
+        let receiptItemsSheetId = null;
+        const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`, {
+          headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        if (metaRes.ok) {
+          const metaData = await metaRes.json();
+          const sheet = metaData.sheets?.find((s: any) => s.properties?.title === 'ReceiptItems');
+          if (sheet?.properties?.sheetId !== undefined) {
+            receiptItemsSheetId = sheet.properties.sheetId;
+          }
+        }
+
+        if (receiptItemsSheetId !== null) {
+          indicesToDelete.sort((a, b) => b - a);
+          const deleteItemsRequests = indicesToDelete.map(rowIndex => ({
+            deleteDimension: {
+              range: {
+                sheetId: receiptItemsSheetId,
+                dimension: 'ROWS',
+                startIndex: rowIndex,
+                endIndex: rowIndex + 1
+              }
+            }
+          }));
+
+          await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ requests: deleteItemsRequests })
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to delete receipt items linked to expense:', e);
+  }
+
   return deleteRes.json();
+}
+
+/**
+ * Ensures that the required worksheets (tabs) are initialized.
+ */
+async function ensureSheetsInitialized(accessToken: string, spreadsheetId: string): Promise<void> {
+  try {
+    const metaRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (!metaRes.ok) return;
+    const metaData = await metaRes.json();
+    const sheets = metaData.sheets || [];
+    const sheetTitles = new Set(sheets.map((s: any) => s.properties.title));
+
+    // Check and migrate Sheet1 headers if needed
+    try {
+      const headersRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A1:O1`, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if (headersRes.ok) {
+        const headersData = await headersRes.json();
+        const currentHeaders = headersData.values?.[0] || [];
+        if (currentHeaders.length < HEADERS.length || !currentHeaders.includes('address')) {
+          await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A1:1?valueInputOption=USER_ENTERED`, {
+            method: 'PUT',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ values: [HEADERS] })
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to check/migrate headers of Sheet1:', err);
+    }
+
+    const missingSheets = [];
+    if (!sheetTitles.has('ReceiptItems')) missingSheets.push('ReceiptItems');
+    if (!sheetTitles.has('Merchants')) missingSheets.push('Merchants');
+    if (!sheetTitles.has('Categories')) missingSheets.push('Categories');
+
+    if (missingSheets.length > 0) {
+      const createSheetsRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          requests: missingSheets.map(title => ({
+            addSheet: { properties: { title } }
+          }))
+        })
+      });
+      
+      if (createSheetsRes.ok) {
+        const data = [];
+        if (missingSheets.includes('ReceiptItems')) {
+          data.push({
+            range: 'ReceiptItems!A1:E1',
+            values: [['id', 'expenseId', 'name', 'price', 'createdAt']]
+          });
+        }
+        if (missingSheets.includes('Merchants')) {
+          data.push({
+            range: 'Merchants!A1:F1',
+            values: [['name', 'defaultCategory', 'locationLat', 'locationLng', 'city', 'createdAt']]
+          });
+        }
+        if (missingSheets.includes('Categories')) {
+          data.push({
+            range: 'Categories!A1:B1',
+            values: [['name', 'createdAt']]
+          });
+        }
+
+        await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            valueInputOption: 'USER_ENTERED',
+            data
+          })
+        });
+      }
+    }
+  } catch (err) {
+    console.error('Error ensuring sheets initialized:', err);
+  }
+}
+
+export async function fetchMerchants(
+  accessToken: string,
+  spreadsheetId: string
+): Promise<Merchant[]> {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Merchants!A2:E`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  const rows = data.values || [];
+  return rows.map((row: any[]) => ({
+    name: row[0] || '',
+    defaultCategory: row[1] || 'Other',
+    locationLat: row[2] !== undefined && row[2] !== '' ? parseFloat(row[2]) : null,
+    locationLng: row[3] !== undefined && row[3] !== '' ? parseFloat(row[3]) : null,
+    city: row[4] || null
+  }));
+}
+
+export async function saveMerchant(
+  accessToken: string,
+  spreadsheetId: string,
+  merchant: Merchant
+): Promise<void> {
+  try {
+    const merchants = await fetchMerchants(accessToken, spreadsheetId);
+    const exists = merchants.some(m => m.name.toLowerCase() === merchant.name.toLowerCase());
+    if (exists) return;
+
+    const row = [
+      merchant.name,
+      merchant.defaultCategory,
+      merchant.locationLat !== null ? merchant.locationLat : '',
+      merchant.locationLng !== null ? merchant.locationLng : '',
+      merchant.city || '',
+      new Date().toISOString()
+    ];
+
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Merchants!A:F:append?valueInputOption=USER_ENTERED`;
+    await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ values: [row] })
+    });
+  } catch (err) {
+    console.warn('Failed to save merchant to sheet:', err);
+  }
+}
+
+export async function fetchCustomCategories(
+  accessToken: string,
+  spreadsheetId: string
+): Promise<string[]> {
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Categories!A2:A`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  const rows = data.values || [];
+  return rows.map((row: any[]) => row[0]).filter(Boolean);
+}
+
+export async function saveCustomCategories(
+  accessToken: string,
+  spreadsheetId: string,
+  categories: string[]
+): Promise<void> {
+  try {
+    const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Categories!A2:B:clear`;
+    await fetch(clearUrl, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+
+    if (categories.length === 0) return;
+
+    const rows = categories.map(cat => [cat, new Date().toISOString()]);
+    const writeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Categories!A2:B?valueInputOption=USER_ENTERED`;
+    await fetch(writeUrl, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ values: rows })
+    });
+  } catch (err) {
+    console.warn('Failed to save categories to sheet:', err);
+  }
 }

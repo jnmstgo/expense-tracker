@@ -1,14 +1,18 @@
 import { useRef, useState } from 'react';
 import type { ReceiptData } from '@/types';
 import { scanReceiptWithAI } from '@/services/geminiOcr';
+import { uploadReceiptToS3 } from '@/services/s3Service';
 import { isValidImageFile } from '@/utils/validators';
+import { useUiStore } from '@/store/uiStore';
 
 interface Props {
+  defaultCurrency?: string;
   onScanned: (data: ReceiptData) => void;
   onError: (msg: string) => void;
 }
 
-export default function ReceiptScanner({ onScanned, onError }: Props) {
+export default function ReceiptScanner({ defaultCurrency, onScanned, onError }: Props) {
+  const isLocalMode = useUiStore(s => s.isLocalMode);
   const [isScanning, setIsScanning] = useState(false);
   const [preview, setPreview]       = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -22,10 +26,16 @@ export default function ReceiptScanner({ onScanned, onError }: Props) {
     setIsScanning(true);
 
     try {
-      const data = await scanReceiptWithAI(file);
-      onScanned(data);
+      const [data, s3Url] = await Promise.all([
+        scanReceiptWithAI(file, defaultCurrency),
+        uploadReceiptToS3(file)
+      ]);
+      onScanned({
+        ...data,
+        receiptUrl: s3Url
+      });
     } catch (err) {
-      onError(err instanceof Error ? err.message : 'Failed to scan receipt');
+      onError(err instanceof Error ? err.message : (isLocalMode ? 'Error al escanear el recibo' : 'Failed to scan receipt'));
     } finally {
       setIsScanning(false);
     }
@@ -67,7 +77,9 @@ export default function ReceiptScanner({ onScanned, onError }: Props) {
               <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg">
                 <div className="text-center">
                   <div className="text-2xl mb-2 animate-pulse-soft">🔍</div>
-                  <p className="text-xs text-white/80">Scanning with Gemini AI...</p>
+                  <p className="text-xs text-white/80">
+                    {isLocalMode ? 'Escaneando con Gemini AI...' : 'Scanning with Gemini AI...'}
+                  </p>
                 </div>
               </div>
             )}
@@ -75,7 +87,9 @@ export default function ReceiptScanner({ onScanned, onError }: Props) {
         ) : (
           <div>
             <p className="text-3xl mb-2">📸</p>
-            <p className="text-sm text-white/60">Drop receipt here or click to upload</p>
+            <p className="text-sm text-white/60">
+              {isLocalMode ? 'Arrastrá tu ticket acá o hacé clic para subirlo' : 'Drop receipt here or click to upload'}
+            </p>
             <p className="text-xs text-white/30 mt-1">JPEG, PNG, WebP · Max 10 MB</p>
           </div>
         )}
@@ -83,7 +97,7 @@ export default function ReceiptScanner({ onScanned, onError }: Props) {
 
       {isScanning && (
         <p className="text-xs text-indigo-300 text-center animate-pulse-soft">
-          AI is extracting data from your receipt…
+          {isLocalMode ? 'La IA está extrayendo los datos de tu ticket…' : 'AI is extracting data from your receipt…'}
         </p>
       )}
     </div>
