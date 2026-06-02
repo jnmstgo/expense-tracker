@@ -41,7 +41,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -56,7 +56,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             temperature: 0.1,
             topK: 1,
             topP: 1,
-            maxOutputTokens: 1024,
+            maxOutputTokens: 2048,
+            responseMimeType: 'application/json',
+            thinkingConfig: {
+              thinkingBudget: 0,
+            },
           },
           safetySettings: [
             { category: 'HARM_CATEGORY_HARASSMENT',        threshold: 'BLOCK_NONE' },
