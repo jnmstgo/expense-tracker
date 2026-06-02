@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useExpenseStore } from '@/store/expenseStore';
 import { useUiStore } from '@/store/uiStore';
+import { useAuthStore } from '@/store/authStore';
 import { useExpenses } from '@/hooks/useExpenses';
 import ExpenseItem from './ExpenseItem';
 import ExpenseFilters from './ExpenseFilters';
@@ -9,9 +10,16 @@ import Button from '@/components/UI/Button';
 
 export default function ExpenseList() {
   const isLocalMode = useUiStore(s => s.isLocalMode);
+  const isFamilyMode = useUiStore(s => s.isFamilyMode);
+  const { user } = useAuthStore();
   const { getFiltered, isLoading, isSyncing } = useExpenseStore();
   const { deleteExpense, loadExpenses } = useExpenses();
-  const filtered = useMemo(getFiltered, [getFiltered]);
+  
+  const filtered = useMemo(() => {
+    const base = getFiltered();
+    if (isFamilyMode) return base;
+    return base.filter(e => e.userId === user?.id);
+  }, [getFiltered, isFamilyMode, user?.id]);
 
   return (
     <div className="space-y-4 animate-fade-in">

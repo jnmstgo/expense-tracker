@@ -6,12 +6,14 @@ interface UiState {
   activeTab: 'dashboard' | 'expenses';
   isDarkMode: boolean;
   isLocalMode: boolean;
+  isFamilyMode: boolean;
   notification: { message: string; type: 'success' | 'error' | 'info' } | null;
   openAddModal: () => void;
   closeAddModal: () => void;
   setTab: (tab: 'dashboard' | 'expenses') => void;
   toggleDarkMode: () => void;
   toggleLocalMode: () => void;
+  toggleFamilyMode: () => void;
   showNotification: (message: string, type?: 'success' | 'error' | 'info') => void;
   clearNotification: () => void;
 }
@@ -23,6 +25,7 @@ export const useUiStore = create<UiState>()(
       activeTab: 'dashboard',
       isDarkMode: true,
       isLocalMode: false,
+      isFamilyMode: false,
       notification: null,
 
       openAddModal:  () => set({ isAddModalOpen: true }),
@@ -40,6 +43,10 @@ export const useUiStore = create<UiState>()(
         set({ isLocalMode: !get().isLocalMode });
       },
 
+      toggleFamilyMode: () => {
+        set({ isFamilyMode: !get().isFamilyMode });
+      },
+
       showNotification: (message, type = 'info') => {
         set({ notification: { message, type } });
         setTimeout(() => set({ notification: null }), 4000);
@@ -51,7 +58,8 @@ export const useUiStore = create<UiState>()(
       name: 'expense-tracker-ui',
       partialize: state => ({
         isDarkMode: state.isDarkMode,
-        isLocalMode: state.isLocalMode
+        isLocalMode: state.isLocalMode,
+        isFamilyMode: state.isFamilyMode
       })
     }
   )

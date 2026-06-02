@@ -29,25 +29,36 @@ export function useAuth() {
       showNotification('Could not connect to Google Sheets.', 'error');
       console.error(err);
     }
-  }, [user?.id, updateToken, updateSpreadsheetId, showNotification]);
+  }, [user?.id, updateToken, updateSpreadsheetId, showNotification]);  useEffect(() => {
+    if (typeof window === 'undefined') return;
 
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.google) return;
-    initGoogleAuth(
-      partialUser => {
-        pendingUserId.current = partialUser.id;
-        setUser({
-          ...partialUser,
-          accessToken: '',
-          tokenExpiry: 0,
-          spreadsheetId: null,
-        });
-        requestAccessToken();
-      },
-      handleToken
-    );
+    const tryInit = () => {
+      if (window.google?.accounts?.id) {
+        initGoogleAuth(
+          partialUser => {
+            pendingUserId.current = partialUser.id;
+            setUser({
+              ...partialUser,
+              accessToken: '',
+              tokenExpiry: 0,
+              spreadsheetId: null,
+            });
+            requestAccessToken();
+          },
+          handleToken
+        );
+        return true;
+      }
+      return false;
+    };
+
+    if (!tryInit()) {
+      const interval = setInterval(() => {
+        if (tryInit()) clearInterval(interval);
+      }, 200);
+      return () => clearInterval(interval);
+    }
   }, [setUser, handleToken]);
-
   const refreshToken = useCallback(() => {
     if (user) requestAccessToken();
   }, [user]);

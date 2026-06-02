@@ -6,7 +6,7 @@ export default function GoogleSignIn() {
 
   useEffect(() => {
     const tryRender = () => {
-      if (btnRef.current && window.google?.accounts?.id) {
+      if (btnRef.current && window.google?.accounts?.id && (window as any).googleAuthInitialized) {
         renderGoogleButton(btnRef.current);
         return true;
       }

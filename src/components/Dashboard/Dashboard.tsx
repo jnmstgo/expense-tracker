@@ -11,12 +11,33 @@ import GlassCard from '@/components/UI/GlassCard';
 import LoadingSpinner from '@/components/UI/LoadingSpinner';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
+const MONTH_NAMES_ES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+];
+
+const MONTH_NAMES_EN = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
 
 export default function Dashboard() {
   const isLocalMode = useUiStore(s => s.isLocalMode);
+  const isFamilyMode = useUiStore(s => s.isFamilyMode);
+  const toggleFamilyMode = useUiStore(s => s.toggleFamilyMode);
   const { user } = useAuthStore();
   const { expenses, isLoading } = useExpenseStore();
-  const [isFamilyMode, setIsFamilyMode] = useState(false);
+
+  // Date selection states (defaults to current month and year)
+  const now = new Date();
+  const [selectedMonth, setSelectedMonth] = useState(now.getMonth()); // 0-indexed
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+
+  const monthsList = isLocalMode ? MONTH_NAMES_ES : MONTH_NAMES_EN;
+  const yearsList = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    return [currentYear - 2, currentYear - 1, currentYear];
+  }, []);
 
   // Filter expenses by current user if Family Mode is inactive
   const filteredExpenses = useMemo(() => {
@@ -24,14 +45,10 @@ export default function Dashboard() {
     return expenses.filter(e => e.userId === user?.id);
   }, [expenses, isFamilyMode, user?.id]);
 
-  // Compute monthly statistics based on filtered expenses
+  // Compute monthly statistics based on filtered expenses for selected month & year
   const summary = useMemo(() => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-    
-    const start = startOfMonth(new Date(year, month - 1));
-    const end   = endOfMonth(new Date(year, month - 1));
+    const start = startOfMonth(new Date(selectedYear, selectedMonth));
+    const end   = endOfMonth(new Date(selectedYear, selectedMonth));
 
     const inMonth = filteredExpenses.filter(e => {
       try {
@@ -53,14 +70,23 @@ export default function Dashboard() {
       byCategory,
       currency: inMonth[0]?.currency ?? (isLocalMode ? 'ARS' : 'USD'),
     };
-  }, [filteredExpenses, isLocalMode]);
+  }, [filteredExpenses, selectedMonth, selectedYear, isLocalMode]);
 
-  // Group members spending for Family Mode chart
+  // Group members spending for Family Mode chart (filtered by selected month & year)
   const familyChartData = useMemo(() => {
     if (!isFamilyMode) return [];
+
+    const start = startOfMonth(new Date(selectedYear, selectedMonth));
+    const end   = endOfMonth(new Date(selectedYear, selectedMonth));
+
+    const inMonth = filteredExpenses.filter(e => {
+      try {
+        return isWithinInterval(parseISO(e.timestamp), { start, end });
+      } catch { return false; }
+    });
     
     const groups: Record<string, number> = {};
-    for (const e of filteredExpenses) {
+    for (const e of inMonth) {
       const label = e.userId === user?.id ? user.name : (isLocalMode ? 'Familiar' : 'Family Member');
       groups[label] = (groups[label] ?? 0) + e.amount;
     }
@@ -68,7 +94,7 @@ export default function Dashboard() {
     return Object.entries(groups)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
-  }, [filteredExpenses, isFamilyMode, user?.id, user?.name, isLocalMode]);
+  }, [filteredExpenses, isFamilyMode, selectedMonth, selectedYear, user?.id, user?.name, isLocalMode]);
 
   const recent = useMemo(
     () => [...filteredExpenses].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 5),
@@ -85,8 +111,50 @@ export default function Dashboard() {
     );
   }
 
+  // Label card header dynamically depending on selected month/year vs current date
+  const isCurrentMonth = selectedMonth === now.getMonth() && selectedYear === now.getFullYear();
+  const summaryLabel = isCurrentMonth
+    ? (isLocalMode ? 'Este Mes' : 'This Month')
+    : `${monthsList[selectedMonth]} ${selectedYear}`;
+
   return (
     <div className="space-y-4 animate-fade-in">
+      {/* Month / Year Selectors */}
+      <div className="grid grid-cols-2 gap-3 p-3 backdrop-blur-xl bg-white/5 rounded-2xl border border-white/10 shadow-lg">
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] uppercase font-bold text-white/40 tracking-wider">
+            {isLocalMode ? 'Mes' : 'Month'}
+          </label>
+          <select
+            value={selectedMonth}
+            onChange={e => setSelectedMonth(parseInt(e.target.value))}
+            className="bg-black/30 border border-white/10 rounded-xl px-3 py-1.5 text-sm text-white/80 focus:outline-none focus:border-indigo-500"
+          >
+            {monthsList.map((m, idx) => (
+              <option key={m} value={idx} className="bg-slate-900 text-white">
+                {m}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] uppercase font-bold text-white/40 tracking-wider">
+            {isLocalMode ? 'Año' : 'Year'}
+          </label>
+          <select
+            value={selectedYear}
+            onChange={e => setSelectedYear(parseInt(e.target.value))}
+            className="bg-black/30 border border-white/10 rounded-xl px-3 py-1.5 text-sm text-white/80 focus:outline-none focus:border-indigo-500"
+          >
+            {yearsList.map(y => (
+              <option key={y} value={y} className="bg-slate-900 text-white">
+                {y}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       {/* Family Toggle Selector */}
       <div className="flex items-center justify-between p-3.5 backdrop-blur-xl bg-white/5 rounded-2xl border border-white/10 shadow-lg">
         <div className="flex items-center gap-2">
@@ -101,7 +169,7 @@ export default function Dashboard() {
           </div>
         </div>
         <button
-          onClick={() => setIsFamilyMode(!isFamilyMode)}
+          onClick={toggleFamilyMode}
           className="px-4 py-1.5 text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-xl hover:bg-indigo-500/30 transition-all duration-300 active:scale-95"
         >
           🔄 {isLocalMode ? 'Cambiar Vista' : 'Switch View'}
@@ -111,7 +179,7 @@ export default function Dashboard() {
       {/* Summary cards */}
       <div className="grid grid-cols-2 gap-3">
         <SummaryCard
-          label={isLocalMode ? 'Este Mes' : 'This Month'}
+          label={summaryLabel}
           value={formatCurrency(summary.total, summary.currency)}
           sub={
             isLocalMode
@@ -138,7 +206,7 @@ export default function Dashboard() {
           </h3>
           {familyChartData.length === 0 ? (
             <p className="text-white/30 text-sm text-center py-6">
-              {isLocalMode ? 'Sin gastos registrados' : 'No expenses recorded'}
+              {isLocalMode ? 'Sin gastos registrados este mes' : 'No expenses recorded this month'}
             </p>
           ) : (
             <ResponsiveContainer width="100%" height={220}>

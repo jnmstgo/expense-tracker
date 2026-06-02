@@ -141,7 +141,7 @@ export async function appendExpense(
 export async function fetchExpenses(
   accessToken: string,
   spreadsheetId: string,
-  userId: string
+  _userId: string
 ): Promise<Expense[]> {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A2:N`;
   const res = await fetch(url, {
@@ -174,8 +174,7 @@ export async function fetchExpenses(
       aiConfidence: row[12] !== undefined && row[12] !== '' ? parseFloat(row[12]) : null,
       createdAt:    row[13] || '',
       synced:       true
-    }))
-    .filter((exp: Expense) => exp.userId === userId);
+    }));
 }
 
 /**

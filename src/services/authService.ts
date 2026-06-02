@@ -45,6 +45,8 @@ export function initGoogleAuth(
       console.error('OAuth2 token error:', err.type);
     },
   });
+
+  (window as any).googleAuthInitialized = true;
 }
 
 export function requestAccessToken(): void {
