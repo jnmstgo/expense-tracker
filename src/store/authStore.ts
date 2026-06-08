@@ -8,6 +8,7 @@ interface AuthState {
   error: string | null;
   setUser: (user: User) => void;
   updateSpreadsheetId: (id: string) => void;
+  updateName: (name: string) => void;
   updateToken: (token: string, expiresIn: number) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -21,11 +22,14 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       isLoading: false,
       error: null,
-
+      
       setUser: user => set({ user, error: null }),
 
       updateSpreadsheetId: spreadsheetId =>
         set(s => ({ user: s.user ? { ...s.user, spreadsheetId } : null })),
+
+      updateName: name =>
+        set(s => ({ user: s.user ? { ...s.user, name } : null })),
 
       updateToken: (accessToken, expiresIn) =>
         set(s => ({

@@ -12,24 +12,22 @@ interface Props {
 }
 
 const EMOJI: Partial<Record<string, string>> = {
-  'Food & Dining': '🍔', 'Transportation': '🚗', 'Shopping': '🛍️',
-  'Entertainment': '🎬', 'Healthcare': '🏥', 'Housing': '🏠',
-  'Travel': '✈️', 'Education': '📚', 'Business': '💼', 'Other': '💳',
+  'Gasto fijo':      '🏠',
+  'Dietetica':       '🌾',
+  'Verdu':           '🥦',
+  'Bohe':            '🍻',
+  'Formación':       '🎓',
+  'Gasto extra':     '🎁',
+  'Pendiente':       '⏳',
+  'Azu/Vida':        '💙',
+  'Perris':          '🐶',
+  'Tarjetas':        '💳',
+  'Salud integral':  '🌱',
+  'Super':           '🛒',
+  'Transferencia':   '💸',
 };
 
-// Category translations in Spanish (Argentina)
-const CATEGORY_TRANSLATIONS: Record<string, string> = {
-  'Food & Dining':   'Comida y Restaurantes',
-  'Transportation':  'Transporte',
-  'Shopping':        'Compras',
-  'Entertainment':   'Entretenimiento',
-  'Healthcare':      'Salud',
-  'Housing':         'Alquiler y Vivienda',
-  'Travel':          'Viajes y Turismo',
-  'Education':       'Educación',
-  'Business':        'Negocios',
-  'Other':           'Otros / Varios',
-};
+const CATEGORY_TRANSLATIONS: Record<string, string> = {};
 
 export default function ExpenseItem({ expense, onDelete }: Props) {
   const isLocalMode = useUiStore(s => s.isLocalMode);

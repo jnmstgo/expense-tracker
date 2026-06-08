@@ -3,7 +3,7 @@ import { v4 as uuid } from 'uuid';
 import { useAuthStore } from '@/store/authStore';
 import { useExpenseStore } from '@/store/expenseStore';
 import { useUiStore } from '@/store/uiStore';
-import { appendExpense, fetchExpenses, deleteExpenseRow, fetchMerchants, saveMerchant, fetchCustomCategories, saveCustomCategories } from '@/services/googleSheets';
+import { appendExpense, fetchExpenses, deleteExpenseRow, fetchMerchants, saveMerchant, fetchCustomCategories, saveCustomCategories, ensureSheetsInitialized } from '@/services/googleSheets';
 import { savePendingExpense, flushPendingExpenses, getCachedExpenses, setCachedExpenses, getPendingExpenses } from '@/services/offlineManager';
 import type { Expense, ExpenseFormData, GeoLocation, Merchant } from '@/types';
 
@@ -48,6 +48,9 @@ export function useExpenses() {
     
     setLoading(true);
     try {
+      // Ensure sheets are initialized and names normalized (e.g. Spanish "Hoja 1" -> "Sheet1") first
+      await ensureSheetsInitialized(user.accessToken, user.spreadsheetId);
+
       const [expensesData, merchantsData, categoriesData] = await Promise.all([
         fetchExpenses(user.accessToken, user.spreadsheetId, user.id),
         fetchMerchants(user.accessToken, user.spreadsheetId).catch(() => []),
@@ -102,7 +105,8 @@ export function useExpenses() {
       createdAt:    new Date().toISOString(),
       synced:       false,
       items:        items || [],
-      address:      formData.address?.trim() || null
+      address:      formData.address?.trim() || null,
+      userName:     user.name || null
     };
 
     // Prepend to active store list

@@ -59,16 +59,19 @@ export interface User {
 }
 
 export const EXPENSE_CATEGORIES = [
-  'Food & Dining',
-  'Transportation',
-  'Shopping',
-  'Entertainment',
-  'Healthcare',
-  'Housing',
-  'Travel',
-  'Education',
-  'Business',
-  'Other',
+  'Gasto fijo',
+  'Dietetica',
+  'Verdu',
+  'Bohe',
+  'Formación',
+  'Gasto extra',
+  'Pendiente',
+  'Azu/Vida',
+  'Perris',
+  'Tarjetas',
+  'Salud integral',
+  'Super',
+  'Transferencia',
 ] as const;
 
 export type ExpenseCategory = string;
@@ -91,6 +94,7 @@ export interface Expense {
   synced: boolean;
   items?: Array<{ name: string; price: number }>;
   address?: string | null;
+  userName?: string | null;
 }
 
 export interface ExpenseFormData {

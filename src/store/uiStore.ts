@@ -3,14 +3,14 @@ import { persist } from 'zustand/middleware';
 
 interface UiState {
   isAddModalOpen: boolean;
-  activeTab: 'dashboard' | 'expenses';
+  activeTab: 'dashboard' | 'expenses' | 'prices';
   isDarkMode: boolean;
   isLocalMode: boolean;
   isFamilyMode: boolean;
   notification: { message: string; type: 'success' | 'error' | 'info' } | null;
   openAddModal: () => void;
   closeAddModal: () => void;
-  setTab: (tab: 'dashboard' | 'expenses') => void;
+  setTab: (tab: 'dashboard' | 'expenses' | 'prices') => void;
   toggleDarkMode: () => void;
   toggleLocalMode: () => void;
   toggleFamilyMode: () => void;

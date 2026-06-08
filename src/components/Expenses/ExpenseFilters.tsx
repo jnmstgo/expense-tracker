@@ -4,19 +4,7 @@ import { useUiStore } from '@/store/uiStore';
 import { CATEGORY_COLORS } from '@/utils/constants';
 import Button from '@/components/UI/Button';
 
-// Category translations in Spanish (Argentina)
-const CATEGORY_TRANSLATIONS: Record<string, string> = {
-  'Food & Dining':   'Comida y Restaurantes',
-  'Transportation':  'Transporte',
-  'Shopping':        'Compras',
-  'Entertainment':   'Entretenimiento',
-  'Healthcare':      'Salud',
-  'Housing':         'Alquiler y Vivienda',
-  'Travel':          'Viajes y Turismo',
-  'Education':       'Educación',
-  'Business':        'Negocios',
-  'Other':           'Otros / Varios',
-};
+const CATEGORY_TRANSLATIONS: Record<string, string> = {};
 
 const LABELS = {
   es: {

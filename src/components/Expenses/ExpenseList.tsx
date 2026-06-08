@@ -12,14 +12,14 @@ export default function ExpenseList() {
   const isLocalMode = useUiStore(s => s.isLocalMode);
   const isFamilyMode = useUiStore(s => s.isFamilyMode);
   const { user } = useAuthStore();
-  const { getFiltered, isLoading, isSyncing } = useExpenseStore();
+  const { expenses, filters, getFiltered, isLoading, isSyncing } = useExpenseStore();
   const { deleteExpense, loadExpenses } = useExpenses();
   
   const filtered = useMemo(() => {
     const base = getFiltered();
     if (isFamilyMode) return base;
     return base.filter(e => e.userId === user?.id);
-  }, [getFiltered, isFamilyMode, user?.id]);
+  }, [expenses, filters, getFiltered, isFamilyMode, user?.id]);
 
   return (
     <div className="space-y-4 animate-fade-in">

@@ -23,18 +23,7 @@ interface Props {
 }
 
 // Translations for expense categories in Spanish (Argentina)
-const CATEGORY_TRANSLATIONS: Record<string, string> = {
-  'Food & Dining':   'Comida y Restaurantes',
-  'Transportation':  'Transporte',
-  'Shopping':        'Compras',
-  'Entertainment':   'Entretenimiento',
-  'Healthcare':      'Salud',
-  'Housing':         'Alquiler y Vivienda',
-  'Travel':          'Viajes y Turismo',
-  'Education':       'Educación',
-  'Business':        'Negocios',
-  'Other':           'Otros / Varios',
-};
+const CATEGORY_TRANSLATIONS: Record<string, string> = {};
 
 export default function ExpenseForm({ onSubmit, onCancel }: Props) {
   const isLocalMode = useUiStore(s => s.isLocalMode);
@@ -46,7 +35,7 @@ export default function ExpenseForm({ onSubmit, onCancel }: Props) {
   const [form, setForm] = useState<ExpenseFormData>(() => ({
     amount: '',
     currency: isLocalMode ? 'ARS' : 'USD',
-    category: 'Other',
+    category: 'Gasto fijo',
     merchant: '',
     description: '',
     address: '',

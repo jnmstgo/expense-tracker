@@ -3,16 +3,19 @@ import type { ExpenseCategory } from '@/types';
 export const CURRENCY_OPTIONS = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'MXN', 'BRL'];
 
 export const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
-  'Food & Dining':   '#f59e0b',
-  'Transportation':  '#3b82f6',
-  'Shopping':        '#8b5cf6',
-  'Entertainment':   '#ec4899',
-  'Healthcare':      '#10b981',
-  'Housing':         '#6366f1',
-  'Travel':          '#06b6d4',
-  'Education':       '#84cc16',
-  'Business':        '#f97316',
-  'Other':           '#6b7280',
+  'Gasto fijo':      '#ef4444',
+  'Dietetica':       '#f59e0b',
+  'Verdu':           '#10b981',
+  'Bohe':            '#ec4899',
+  'Formación':       '#3b82f6',
+  'Gasto extra':     '#8b5cf6',
+  'Pendiente':       '#f97316',
+  'Azu/Vida':        '#06b6d4',
+  'Perris':          '#eab308',
+  'Tarjetas':        '#6366f1',
+  'Salud integral':  '#14b8a6',
+  'Super':           '#a855f7',
+  'Transferencia':   '#6b7280',
 };
 
 export const SPREADSHEET_HEADERS = [

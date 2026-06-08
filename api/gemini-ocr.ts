@@ -1,30 +1,43 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { buildPrompt, cleanGeminiOutput } from '../src/utils/ocrPrompt';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+const headers = {
+  'Access-Control-Allow-Origin': process.env.VITE_APP_URL ?? '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+export async function handler(event: any) {
   // Handle CORS preflight
-  res.setHeader('Access-Control-Allow-Origin', process.env.VITE_APP_URL ?? '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') return res.status(204).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-
-  if (!GEMINI_API_KEY) {
-    return res.status(500).json({ error: 'GEMINI_API_KEY environment variable not set' });
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 204, headers, body: '' };
   }
 
-  const { image, mimeType, defaultCurrency } = req.body as { image?: string; mimeType?: string; defaultCurrency?: string };
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method not allowed' }) };
+  }
+
+  if (!GEMINI_API_KEY) {
+    return { statusCode: 500, headers, body: JSON.stringify({ error: 'GEMINI_API_KEY environment variable not set' }) };
+  }
+
+  let body: any = {};
+  try {
+    body = JSON.parse(event.body || '{}');
+  } catch (e) {
+    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid JSON body' }) };
+  }
+
+  const { image, mimeType, defaultCurrency } = body;
 
   if (!image || !mimeType) {
-    return res.status(400).json({ error: 'Missing image or mimeType in request body' });
+    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing image or mimeType in request body' }) };
   }
 
   const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/gif'];
   if (!allowedMimeTypes.includes(mimeType)) {
-    return res.status(400).json({ error: `Unsupported image type: ${mimeType}` });
+    return { statusCode: 400, headers, body: JSON.stringify({ error: `Unsupported image type: ${mimeType}` }) };
   }
 
   try {
@@ -63,7 +76,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!geminiRes.ok) {
       const errBody = await geminiRes.text();
       console.error('Gemini API error:', errBody);
-      return res.status(502).json({ error: 'Gemini API request failed', detail: errBody });
+      return { statusCode: 502, headers, body: JSON.stringify({ error: 'Gemini API request failed', detail: errBody }) };
     }
 
     const geminiData = await geminiRes.json() as {
@@ -75,7 +88,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
 
     if (geminiData.error) {
-      return res.status(502).json({ error: geminiData.error.message });
+      return { statusCode: 502, headers, body: JSON.stringify({ error: geminiData.error.message }) };
     }
 
     const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
@@ -86,17 +99,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       parsed = JSON.parse(cleaned);
     } catch {
       console.error('Failed to parse Gemini output:', rawText);
-      return res.status(422).json({
-        error: 'Could not parse receipt data from image',
-        raw: rawText,
-      });
+      return {
+        statusCode: 422,
+        headers,
+        body: JSON.stringify({
+          error: 'Could not parse receipt data from image',
+          raw: rawText,
+        }),
+      };
     }
 
-    return res.status(200).json(parsed);
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify(parsed),
+    };
   } catch (err) {
     console.error('OCR handler error:', err);
-    return res.status(500).json({
-      error: err instanceof Error ? err.message : 'Internal server error',
-    });
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({
+        error: err instanceof Error ? err.message : 'Internal server error',
+      }),
+    };
   }
 }
