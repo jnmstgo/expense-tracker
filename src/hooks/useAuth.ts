@@ -22,14 +22,17 @@ export function useAuth() {
     if (!userId) return;
 
     try {
-      const spreadsheetId = await getOrCreateSpreadsheet(token.access_token, userId);
+      const existingId = useAuthStore.getState().user?.spreadsheetId;
+      const spreadsheetId = existingId || await getOrCreateSpreadsheet(token.access_token, userId);
       updateSpreadsheetId(spreadsheetId);
       showNotification('Signed in successfully!', 'success');
     } catch (err) {
       showNotification('Could not connect to Google Sheets.', 'error');
       console.error(err);
     }
-  }, [user?.id, updateToken, updateSpreadsheetId, showNotification]);  useEffect(() => {
+  }, [user?.id, updateToken, updateSpreadsheetId, showNotification]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const tryInit = () => {
@@ -37,16 +40,26 @@ export function useAuth() {
         initGoogleAuth(
           partialUser => {
             pendingUserId.current = partialUser.id;
+            const existingUser = useAuthStore.getState().user;
+            const sameUser = existingUser && existingUser.id === partialUser.id;
             setUser({
               ...partialUser,
               accessToken: '',
               tokenExpiry: 0,
-              spreadsheetId: null,
+              spreadsheetId: sameUser ? existingUser.spreadsheetId : null,
             });
             requestAccessToken();
           },
           handleToken
         );
+
+        // Auto-refresh token if user session exists but is expired
+        const currentUser = useAuthStore.getState().user;
+        const valid = useAuthStore.getState().isTokenValid();
+        if (currentUser && !valid) {
+          requestAccessToken();
+        }
+
         return true;
       }
       return false;
