@@ -17,7 +17,9 @@ const HEADERS = [
   'aiConfidence',
   'createdAt',
   'address',
-  'userName'
+  'userName',
+  'status',
+  'paymentMethod'
 ];
 
 /**
@@ -73,7 +75,7 @@ export async function getOrCreateSpreadsheet(
   const spreadsheetId = createData.spreadsheetId;
 
   // Insert column headers
-  const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A1:P1:append?valueInputOption=USER_ENTERED`;
+  const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A1:R1:append?valueInputOption=USER_ENTERED`;
   const appendRes = await fetch(appendUrl, {
     method: 'POST',
     headers: {
@@ -117,10 +119,12 @@ export async function appendExpense(
     expense.aiConfidence !== null ? expense.aiConfidence : '',
     expense.createdAt,
     expense.address || '',
-    expense.userName || ''
+    expense.userName || '',
+    expense.status || 'confirmed',
+    expense.paymentMethod || ''
   ];
 
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A:P:append?valueInputOption=USER_ENTERED`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A:R:append?valueInputOption=USER_ENTERED`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -171,6 +175,73 @@ export async function appendExpense(
 }
 
 /**
+ * Updates an existing expense row in Google Sheets.
+ */
+export async function updateExpenseRow(
+  accessToken: string,
+  spreadsheetId: string,
+  expense: Expense
+): Promise<any> {
+  const readUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A:A`;
+  const readRes = await fetch(readUrl, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+
+  if (!readRes.ok) {
+    throw new Error('Failed to find row for update');
+  }
+
+  const readData = await readRes.json();
+  const rows = readData.values || [];
+  const rowIndex = rows.findIndex((row: any[]) => row[0] === expense.id);
+
+  if (rowIndex === -1) {
+    throw new Error('Expense row not found in sheet');
+  }
+
+  const row = [
+    expense.id,
+    expense.userId,
+    expense.timestamp,
+    expense.amount,
+    expense.currency,
+    expense.category,
+    expense.merchant,
+    expense.description,
+    expense.locationLat !== null && expense.locationLat !== undefined ? expense.locationLat : '',
+    expense.locationLng !== null && expense.locationLng !== undefined ? expense.locationLng : '',
+    expense.city || '',
+    expense.receiptUrl || '',
+    expense.aiConfidence !== null && expense.aiConfidence !== undefined ? expense.aiConfidence : '',
+    expense.createdAt,
+    expense.address || '',
+    expense.userName || '',
+    expense.status || 'confirmed',
+    expense.paymentMethod || ''
+  ];
+
+  const updateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A${rowIndex + 1}:R${rowIndex + 1}?valueInputOption=USER_ENTERED`;
+  const updateRes = await fetch(updateUrl, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      values: [row]
+    })
+  });
+
+  if (!updateRes.ok) {
+    const err = await updateRes.text();
+    console.error('Row update failed:', err);
+    throw new Error('Failed to update expense row in Google Sheets');
+  }
+
+  return updateRes.json();
+}
+
+/**
  * Fetches all expenses from the Google Sheet, parsing them back to modular Expense objects.
  * Filters by current user ID.
  */
@@ -179,7 +250,7 @@ export async function fetchExpenses(
   spreadsheetId: string,
   _userId: string
 ): Promise<Expense[]> {
-  const mainUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A2:P`;
+  const mainUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A2:R`;
   const itemsUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/ReceiptItems!A2:E`;
 
   const [mainRes, itemsRes] = await Promise.all([
@@ -240,7 +311,9 @@ export async function fetchExpenses(
         synced:       true,
         items:        itemsByExpenseId[id] || [],
         address:      row[14] || null,
-        userName:     row[15] || null
+        userName:     row[15] || null,
+        status:       row[16] || 'confirmed',
+        paymentMethod: row[17] || ''
       };
     });
 }
@@ -432,14 +505,14 @@ export async function ensureSheetsInitialized(accessToken: string, spreadsheetId
 
     // Check and migrate Sheet1 headers if needed
     try {
-      const headersRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A1:P1`, {
+      const headersRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A1:R1`, {
         headers: { Authorization: `Bearer ${accessToken}` }
       });
       if (headersRes.ok) {
         const headersData = await headersRes.json();
         const currentHeaders = headersData.values?.[0] || [];
-        if (currentHeaders.length < HEADERS.length || !currentHeaders.includes('userName')) {
-          await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A1:P1?valueInputOption=USER_ENTERED`, {
+        if (currentHeaders.length < HEADERS.length || !currentHeaders.includes('status')) {
+          await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Sheet1!A1:R1?valueInputOption=USER_ENTERED`, {
             method: 'PUT',
             headers: {
               Authorization: `Bearer ${accessToken}`,

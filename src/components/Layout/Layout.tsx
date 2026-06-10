@@ -197,7 +197,7 @@ export default function Layout({ children }: Props) {
               {tab === 'dashboard'
                 ? (isLocalMode ? '📊 Resumen' : '📊 Dashboard')
                 : tab === 'expenses'
-                  ? (isLocalMode ? '📋 Gastos' : '📋 Expenses')
+                  ? (isLocalMode ? '📋 Movimientos' : '📋 Movements')
                   : (isLocalMode ? '🔍 Precios' : '🔍 Prices')}
               {activeTab === tab && (
                 <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 rounded-full" />

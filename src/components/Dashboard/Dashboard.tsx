@@ -8,6 +8,10 @@ import { CATEGORY_COLORS } from '@/utils/constants';
 import SummaryCard from './SummaryCard';
 import GlassCard from '@/components/UI/GlassCard';
 import LoadingSpinner from '@/components/UI/LoadingSpinner';
+import { useExpenses } from '@/hooks/useExpenses';
+import IncomeModal from './IncomeModal';
+import EditExpenseModal from '@/components/Expenses/EditExpenseModal';
+import type { Expense } from '@/types';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid, AreaChart, Area } from 'recharts';
 
 const MONTH_NAMES_ES = [
@@ -34,6 +38,7 @@ const CATEGORY_EMOJIS: Record<string, string> = {
   'Salud integral':  '🌱',
   'Super':           '🛒',
   'Transferencia':   '💸',
+  'Ingreso':         '💵',
 };
 
 export default function Dashboard() {
@@ -44,6 +49,12 @@ export default function Dashboard() {
   const { user } = useAuthStore();
   const { expenses, isLoading, setFilters } = useExpenseStore();
 
+  const { addNewExpense, deleteExpense, updateExpense } = useExpenses();
+  const [isIncomeModalOpen, setIsIncomeModalOpen] = useState(false);
+  const [bottomTab, setBottomTab] = useState<'recent' | 'pending'>('recent');
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+
   // Date selection states (defaults to current month and year)
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth()); // 0-indexed
@@ -51,6 +62,26 @@ export default function Dashboard() {
 
   const [chartDimension, setChartDimension] = useState<'category' | 'member' | 'daily'>('category');
   const [chartType, setChartType] = useState<'pie' | 'bar' | 'area'>('pie');
+
+  const handleAddIncome = async (data: { amount: string; currency: string; merchant: string; paidBy: string }) => {
+    await addNewExpense(
+      {
+        amount: data.amount,
+        currency: data.currency,
+        category: 'Ingreso',
+        merchant: data.merchant,
+        description: 'Ingreso de dinero',
+        paidBy: data.paidBy
+      },
+      null,
+      null,
+      null
+    );
+  };
+
+  const handleDeleteIncome = async (id: string) => {
+    await deleteExpense(id);
+  };
 
   useEffect(() => {
     if (!isFamilyMode && chartDimension === 'member') {
@@ -87,7 +118,7 @@ export default function Dashboard() {
 
     const inMonth = filteredExpenses.filter(e => {
       try {
-        return isWithinInterval(parseISO(e.timestamp), { start, end });
+        return e.category !== 'Ingreso' && isWithinInterval(parseISO(e.timestamp), { start, end });
       } catch { return false; }
     });
 
@@ -107,6 +138,34 @@ export default function Dashboard() {
     };
   }, [filteredExpenses, selectedMonth, selectedYear, isLocalMode]);
 
+  // Compute available budget for selected month
+  const budget = useMemo(() => {
+    const start = startOfMonth(new Date(selectedYear, selectedMonth));
+    const end   = endOfMonth(new Date(selectedYear, selectedMonth));
+
+    const monthIncomes = filteredExpenses.filter(e => {
+      try {
+        return e.category === 'Ingreso' && isWithinInterval(parseISO(e.timestamp), { start, end });
+      } catch { return false; }
+    });
+
+    const monthConfirmedSpent = filteredExpenses.filter(e => {
+      try {
+        return e.category !== 'Ingreso' && e.status !== 'pending' && isWithinInterval(parseISO(e.timestamp), { start, end });
+      } catch { return false; }
+    });
+
+    const totalIncome = monthIncomes.reduce((sum, e) => sum + e.amount, 0);
+    const totalSpentConfirmed = monthConfirmedSpent.reduce((sum, e) => sum + e.amount, 0);
+
+    return {
+      totalIncome,
+      totalSpentConfirmed,
+      available: totalIncome - totalSpentConfirmed,
+      currency: monthIncomes[0]?.currency ?? monthConfirmedSpent[0]?.currency ?? (isLocalMode ? 'ARS' : 'USD')
+    };
+  }, [filteredExpenses, selectedMonth, selectedYear, isLocalMode]);
+
   // Group members spending for Family Mode chart (filtered by selected month & year)
   const familyChartData = useMemo(() => {
     if (!isFamilyMode) return [];
@@ -116,7 +175,7 @@ export default function Dashboard() {
 
     const inMonth = filteredExpenses.filter(e => {
       try {
-        return isWithinInterval(parseISO(e.timestamp), { start, end });
+        return e.category !== 'Ingreso' && isWithinInterval(parseISO(e.timestamp), { start, end });
       } catch { return false; }
     });
     
@@ -131,10 +190,32 @@ export default function Dashboard() {
       .sort((a, b) => b.value - a.value);
   }, [filteredExpenses, isFamilyMode, selectedMonth, selectedYear, user?.id, user?.name, isLocalMode]);
 
-  const recent = useMemo(
-    () => [...filteredExpenses].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 5),
-    [filteredExpenses]
-  );
+  const recentConfirmed = useMemo(() => {
+    const start = startOfMonth(new Date(selectedYear, selectedMonth));
+    const end   = endOfMonth(new Date(selectedYear, selectedMonth));
+    return filteredExpenses
+      .filter(e => {
+        try {
+          const date = parseISO(e.timestamp);
+          return e.category !== 'Ingreso' && e.status !== 'pending' && isWithinInterval(date, { start, end });
+        } catch { return false; }
+      })
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+      .slice(0, 10);
+  }, [filteredExpenses, selectedMonth, selectedYear]);
+
+  const pendingExpenses = useMemo(() => {
+    const start = startOfMonth(new Date(selectedYear, selectedMonth));
+    const end   = endOfMonth(new Date(selectedYear, selectedMonth));
+    return filteredExpenses
+      .filter(e => {
+        try {
+          const date = parseISO(e.timestamp);
+          return e.category !== 'Ingreso' && e.status === 'pending' && isWithinInterval(date, { start, end });
+        } catch { return false; }
+      })
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  }, [filteredExpenses, selectedMonth, selectedYear]);
 
   const categoryData = useMemo(() => {
     return Object.entries(summary.byCategory)
@@ -158,6 +239,7 @@ export default function Dashboard() {
 
     filteredExpenses.forEach(e => {
       try {
+        if (e.category === 'Ingreso') return;
         const date = parseISO(e.timestamp);
         if (isWithinInterval(date, { start, end })) {
           const day = date.getDate();
@@ -261,11 +343,12 @@ export default function Dashboard() {
           color="text-indigo-300"
         />
         <SummaryCard
-          label={isLocalMode ? 'Promedio' : 'Avg / Transaction'}
-          value={summary.count > 0 ? formatCurrency(summary.total / summary.count, summary.currency) : '—'}
-          sub={isLocalMode ? 'este mes' : 'this month'}
+          label={isLocalMode ? 'Disponible' : 'Available'}
+          value={formatCurrency(budget.available, budget.currency)}
+          sub={isLocalMode ? 'Ingresos menos gastos confirmados' : 'Income minus paid expenses'}
           icon="📊"
-          color="text-purple-300"
+          color={budget.available >= 0 ? "text-emerald-300" : "text-rose-400"}
+          onClick={() => setIsIncomeModalOpen(true)}
         />
       </div>
 
@@ -462,47 +545,251 @@ export default function Dashboard() {
         </div>
       </GlassCard>
 
-      {/* Recent expenses */}
-      <GlassCard className="p-4">
-        <h3 className="text-sm font-semibold text-white/70 mb-3 uppercase tracking-wide">
-          {isLocalMode ? 'Actividad Reciente' : 'Recent Activity'}
-        </h3>
-        {recent.length === 0 ? (
-          <p className="text-white/30 text-sm text-center py-4">
-            {isLocalMode 
-              ? 'Sin gastos registrados. ¡Agregá tu primer consumo!' 
-              : 'No expenses yet. Add your first one!'}
-          </p>
-        ) : (
-          <ul className="space-y-2">
-            {recent.map(e => (
-              <li key={e.id} className="flex items-center justify-between py-1.5">
-                <div className="flex items-center gap-3">
-                  <span className="text-lg">
-                    {CATEGORY_EMOJIS[e.category] ?? '💳'}
-                  </span>
-                  <div>
-                    <p className="text-sm font-medium text-white/90">
-                      {e.merchant || (isLocalMode ? 'Desconocido' : 'Unknown')}
-                    </p>
-                    <p className="text-xs text-white/40">{formatDate(e.timestamp)}</p>
+      {/* Bottom Tabs Card */}
+      <GlassCard className="p-4 space-y-4">
+        {/* Tab Selector */}
+        <div className="flex border-b border-white/10 pb-2 gap-4">
+          <button
+            onClick={() => setBottomTab('recent')}
+            className={[
+              "text-sm font-semibold uppercase tracking-wide pb-1 transition-all relative",
+              bottomTab === 'recent' ? "text-white" : "text-white/40 hover:text-white/60"
+            ].join(" ")}
+          >
+            {isLocalMode ? 'Actividad Reciente' : 'Recent Activity'}
+            {bottomTab === 'recent' && (
+              <span className="absolute bottom-[-9px] left-0 right-0 h-0.5 bg-indigo-500 rounded-full" />
+            )}
+          </button>
+          <button
+            onClick={() => setBottomTab('pending')}
+            className={[
+              "text-sm font-semibold uppercase tracking-wide pb-1 transition-all relative flex items-center gap-1.5",
+              bottomTab === 'pending' ? "text-white" : "text-white/40 hover:text-white/60"
+            ].join(" ")}
+          >
+            {isLocalMode ? 'Consumos Pendientes' : 'Pending Expenses'}
+            {pendingExpenses.length > 0 && (
+              <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold px-1.5 py-0.5 rounded-full">
+                {pendingExpenses.length}
+              </span>
+            )}
+            {bottomTab === 'pending' && (
+              <span className="absolute bottom-[-9px] left-0 right-0 h-0.5 bg-indigo-500 rounded-full" />
+            )}
+          </button>
+        </div>
+
+        {/* Tab Content */}
+        {bottomTab === 'recent' ? (
+          recentConfirmed.length === 0 ? (
+            <p className="text-white/30 text-sm text-center py-6">
+              {isLocalMode 
+                ? 'Sin gastos registrados. ¡Agregá tu primer consumo!' 
+                : 'No expenses yet. Add your first one!'}
+            </p>
+          ) : (
+            <ul className="space-y-2 select-none">
+              {recentConfirmed.map(e => (
+                <li key={e.id} className="flex items-center justify-between py-2 px-3 bg-white/5 border border-white/5 rounded-2xl hover:bg-white/10 transition-colors">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-lg flex-shrink-0">
+                      {CATEGORY_EMOJIS[e.category] ?? '💳'}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-white/90 truncate">
+                        {e.merchant || (isLocalMode ? 'Desconocido' : 'Unknown')}
+                      </p>
+                      <p className="text-[10px] text-white/40">{formatDate(e.timestamp)}</p>
+                    </div>
                   </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold" style={{ color: CATEGORY_COLORS[e.category] ?? '#fff' }}>
-                    {formatCurrency(e.amount, e.currency)}
-                  </p>
-                  {!e.synced && (
-                    <p className="text-xs text-amber-400">
-                      {isLocalMode ? 'Pendiente' : 'Pending sync'}
+                  <div className="flex items-center gap-3 ml-2 flex-shrink-0">
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-white/90">
+                        {formatCurrency(e.amount, e.currency)}
+                      </p>
+                      {!e.synced && (
+                        <p className="text-[9px] text-amber-400">
+                          {isLocalMode ? 'Pendiente' : 'Pending sync'}
+                        </p>
+                      )}
+                    </div>
+                    {/* 3-dots dropdown menu */}
+                    <div className="relative" onClick={(ev) => ev.stopPropagation()}>
+                      <button
+                        onClick={() => setActiveMenuId(activeMenuId === e.id ? null : e.id)}
+                        className="text-white/40 hover:text-white/80 p-1 rounded transition-colors text-lg font-bold w-8 h-8 flex items-center justify-center cursor-pointer"
+                        aria-label="Options"
+                      >
+                        ⋮
+                      </button>
+
+                      {activeMenuId === e.id && (
+                        <>
+                          {/* Click-away backdrop */}
+                          <div className="fixed inset-0 z-10" onClick={() => setActiveMenuId(null)} />
+                          
+                          <div className="absolute right-0 mt-1 w-44 bg-slate-900 border border-white/10 rounded-xl shadow-2xl py-1.5 z-20 backdrop-blur-xl animate-fade-in font-sans text-left">
+                            <button
+                              onClick={() => {
+                                setActiveMenuId(null);
+                                setEditingExpense(e);
+                              }}
+                              className="w-full text-left px-4 py-2 text-xs font-semibold text-white/80 hover:bg-white/5 flex items-center gap-2 cursor-pointer"
+                            >
+                              ✏️ {isLocalMode ? 'Editar consumo' : 'Edit expense'}
+                            </button>
+
+                            {e.category !== 'Ingreso' && (
+                              <button
+                                onClick={() => {
+                                  setActiveMenuId(null);
+                                  updateExpense(e.id, { status: e.status === 'pending' ? 'confirmed' : 'pending' });
+                                }}
+                                className="w-full text-left px-4 py-2 text-xs font-semibold text-white/80 hover:bg-white/5 flex items-center gap-2 cursor-pointer"
+                              >
+                                {e.status === 'pending'
+                                  ? '✅ ' + (isLocalMode ? 'Confirmar Pago' : 'Confirm Payment')
+                                  : '⏳ ' + (isLocalMode ? 'Marcar pendiente' : 'Set as Pending')}
+                              </button>
+                            )}
+
+                            <div className="h-[1px] bg-white/10 my-1" />
+
+                            <button
+                              onClick={async () => {
+                                setActiveMenuId(null);
+                                const confirmMsg = isLocalMode 
+                                  ? '¿Estás seguro de que querés eliminar este consumo?' 
+                                  : 'Are you sure you want to delete this expense?';
+                                if (window.confirm(confirmMsg)) {
+                                  await deleteExpense(e.id);
+                                }
+                              }}
+                              className="w-full text-left px-4 py-2 text-xs font-semibold text-rose-400 hover:bg-rose-500/10 flex items-center gap-2 cursor-pointer"
+                            >
+                              🗑️ {isLocalMode ? 'Eliminar' : 'Delete'}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )
+        ) : (
+          pendingExpenses.length === 0 ? (
+            <p className="text-white/30 text-sm text-center py-6">
+              {isLocalMode 
+                ? 'No tenés consumos pendientes este mes. 🎉' 
+                : 'No pending expenses for this month. 🎉'}
+            </p>
+          ) : (
+            <ul className="space-y-2 select-none font-sans">
+              {pendingExpenses.map(e => (
+                <li key={e.id} className="flex items-center justify-between py-2 px-3 bg-amber-500/5 border border-amber-500/10 rounded-2xl hover:bg-amber-500/10 transition-colors animate-fade-in">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-lg flex-shrink-0">
+                      {CATEGORY_EMOJIS[e.category] ?? '💳'}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-white/95 truncate">
+                        {e.merchant || (isLocalMode ? 'Gasto Fijo' : 'Fixed Gasto')}
+                      </p>
+                      <p className="text-[10px] text-white/40">{formatDate(e.timestamp)}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 ml-2 flex-shrink-0">
+                    <p className="text-sm font-bold text-amber-400">
+                      {formatCurrency(e.amount, e.currency)}
                     </p>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
+                    {/* 3-dots dropdown menu */}
+                    <div className="relative" onClick={(ev) => ev.stopPropagation()}>
+                      <button
+                        onClick={() => setActiveMenuId(activeMenuId === e.id ? null : e.id)}
+                        className="text-white/40 hover:text-white/80 p-1 rounded transition-colors text-lg font-bold w-8 h-8 flex items-center justify-center cursor-pointer"
+                        aria-label="Options"
+                      >
+                        ⋮
+                      </button>
+
+                      {activeMenuId === e.id && (
+                        <>
+                          {/* Click-away backdrop */}
+                          <div className="fixed inset-0 z-10" onClick={() => setActiveMenuId(null)} />
+                          
+                          <div className="absolute right-0 mt-1 w-44 bg-slate-900 border border-white/10 rounded-xl shadow-2xl py-1.5 z-20 backdrop-blur-xl animate-fade-in font-sans text-left">
+                            <button
+                              onClick={() => {
+                                setActiveMenuId(null);
+                                setEditingExpense(e);
+                              }}
+                              className="w-full text-left px-4 py-2 text-xs font-semibold text-white/80 hover:bg-white/5 flex items-center gap-2 cursor-pointer"
+                            >
+                              ✏️ {isLocalMode ? 'Editar consumo' : 'Edit expense'}
+                            </button>
+
+                            {e.category !== 'Ingreso' && (
+                              <button
+                                onClick={() => {
+                                  setActiveMenuId(null);
+                                  updateExpense(e.id, { status: e.status === 'pending' ? 'confirmed' : 'pending' });
+                                }}
+                                className="w-full text-left px-4 py-2 text-xs font-semibold text-white/80 hover:bg-white/5 flex items-center gap-2 cursor-pointer"
+                              >
+                                {e.status === 'pending'
+                                  ? '✅ ' + (isLocalMode ? 'Confirmar Pago' : 'Confirm Payment')
+                                  : '⏳ ' + (isLocalMode ? 'Marcar pendiente' : 'Set as Pending')}
+                              </button>
+                            )}
+
+                            <div className="h-[1px] bg-white/10 my-1" />
+
+                            <button
+                              onClick={async () => {
+                                setActiveMenuId(null);
+                                const confirmMsg = isLocalMode 
+                                  ? '¿Estás seguro de que querés eliminar este consumo?' 
+                                  : 'Are you sure you want to delete this expense?';
+                                if (window.confirm(confirmMsg)) {
+                                  await deleteExpense(e.id);
+                                }
+                              }}
+                              className="w-full text-left px-4 py-2 text-xs font-semibold text-rose-400 hover:bg-rose-500/10 flex items-center gap-2 cursor-pointer"
+                            >
+                              🗑️ {isLocalMode ? 'Eliminar' : 'Delete'}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )
         )}
       </GlassCard>
+
+      <IncomeModal
+        isOpen={isIncomeModalOpen}
+        onClose={() => setIsIncomeModalOpen(false)}
+        selectedMonth={selectedMonth}
+        selectedYear={selectedYear}
+        onAddIncome={handleAddIncome}
+        onDeleteIncome={handleDeleteIncome}
+      />
+
+      {editingExpense && (
+        <EditExpenseModal
+          isOpen={!!editingExpense}
+          expense={editingExpense}
+          onClose={() => setEditingExpense(null)}
+          onSave={updateExpense}
+        />
+      )}
     </div>
   );
 }

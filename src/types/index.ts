@@ -72,6 +72,7 @@ export const EXPENSE_CATEGORIES = [
   'Salud integral',
   'Super',
   'Transferencia',
+  'Ingreso',
 ] as const;
 
 export type ExpenseCategory = string;
@@ -95,6 +96,9 @@ export interface Expense {
   items?: Array<{ name: string; price: number }>;
   address?: string | null;
   userName?: string | null;
+  status?: 'pending' | 'confirmed';
+  paidBy?: string;
+  paymentMethod?: string;
 }
 
 export interface ExpenseFormData {
@@ -104,6 +108,8 @@ export interface ExpenseFormData {
   merchant: string;
   description: string;
   address?: string;
+  paidBy?: string;
+  paymentMethod?: string;
 }
 
 export interface Merchant {

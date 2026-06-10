@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import type { ExpenseFormData, ReceiptData, GeoLocation, Merchant } from '@/types';
 import { useExpenseStore } from '@/store/expenseStore';
+import { useAuthStore } from '@/store/authStore';
 import { useExpenses } from '@/hooks/useExpenses';
 import { CURRENCY_OPTIONS } from '@/utils/constants';
 import { isValidAmount } from '@/utils/validators';
@@ -31,6 +32,20 @@ export default function ExpenseForm({ onSubmit, onCancel }: Props) {
   const { merchants, customCategories } = useExpenseStore();
   const { addMerchantToSheets } = useExpenses();
   
+  const { user } = useAuthStore();
+  const expenses = useExpenseStore(s => s.expenses);
+  const familyMembers = useMemo(() => {
+    const names = new Set<string>();
+    if (user?.name) names.add(user.name);
+    expenses.forEach(e => {
+      if (e.userName) names.add(e.userName);
+      if (e.paidBy) names.add(e.paidBy);
+    });
+    return Array.from(names);
+  }, [expenses, user?.name]);
+
+  const [isCustomPaidBy, setIsCustomPaidBy] = useState(false);
+
   // Set default currency to ARS in Local Mode, USD otherwise
   const [form, setForm] = useState<ExpenseFormData>(() => ({
     amount: '',
@@ -39,7 +54,19 @@ export default function ExpenseForm({ onSubmit, onCancel }: Props) {
     merchant: '',
     description: '',
     address: '',
+    paidBy: user?.name || '',
+    paymentMethod: 'Cash',
   }));
+
+  const handlePaidByChange = (val: string) => {
+    if (val === 'custom') {
+      setIsCustomPaidBy(true);
+      setForm(prev => ({ ...prev, paidBy: '' }));
+    } else {
+      setIsCustomPaidBy(false);
+      setForm(prev => ({ ...prev, paidBy: val }));
+    }
+  };
 
   const [errors, setErrors] = useState<Partial<ExpenseFormData>>({});
   const [saving, setSaving] = useState(false);
@@ -292,7 +319,7 @@ export default function ExpenseForm({ onSubmit, onCancel }: Props) {
             label={isLocalMode ? 'Categoría' : 'Category'}
             value={form.category}
             onChange={v => set('category')(v)}
-            options={customCategories.map(c => ({ 
+            options={customCategories.filter(c => c !== 'Ingreso').map(c => ({ 
               value: c, 
               label: isLocalMode ? (CATEGORY_TRANSLATIONS[c] || c) : c 
             }))}
@@ -314,6 +341,44 @@ export default function ExpenseForm({ onSubmit, onCancel }: Props) {
         value={form.description}
         onChange={e => set('description')(e.target.value)}
       />
+
+      {/* Paid By & Payment Method */}
+      <div className="grid grid-cols-2 gap-3">
+        <Select
+          label={isLocalMode ? 'Pago:' : 'Paid By:'}
+          value={isCustomPaidBy ? 'custom' : (form.paidBy || '')}
+          onChange={handlePaidByChange}
+          options={[
+            ...familyMembers.map(name => ({ value: name, label: name })),
+            { value: 'custom', label: isLocalMode ? '+ Agregar miembro...' : '+ Add member...' }
+          ]}
+        />
+        <Select
+          label={isLocalMode ? 'Medio de Pago:' : 'Payment Method:'}
+          value={form.paymentMethod || ''}
+          onChange={v => set('paymentMethod')(v)}
+          options={[
+            { value: 'Tarjeta P', label: 'Tarjeta P' },
+            { value: 'Tarjeta S', label: 'Tarjeta S' },
+            { value: 'Transferencia', label: 'Transferencia' },
+            { value: 'Cash', label: 'Cash' },
+            { value: 'Debito', label: 'Débito' }
+          ]}
+        />
+      </div>
+
+      {isCustomPaidBy && (
+        <div className="animate-fade-in">
+          <Input
+            label={isLocalMode ? 'Nombre del miembro' : 'Member Name'}
+            placeholder={isLocalMode ? 'Ingresá el nombre...' : 'Enter name...'}
+            value={form.paidBy || ''}
+            onChange={e => set('paidBy')(e.target.value)}
+            icon="👤"
+            required
+          />
+        </div>
+      )}
 
       {/* Geolocation */}
       <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/10">

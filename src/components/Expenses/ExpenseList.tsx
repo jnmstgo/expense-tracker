@@ -26,8 +26,8 @@ export default function ExpenseList() {
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wide">
           {filtered.length} {filtered.length === 1 
-            ? (isLocalMode ? 'gasto' : 'expense') 
-            : (isLocalMode ? 'gastos' : 'expenses')}
+            ? (isLocalMode ? 'movimiento' : 'movement') 
+            : (isLocalMode ? 'movimientos' : 'movements')}
         </h2>
         <div className="flex gap-2">
           {isSyncing && <LoadingSpinner size="sm" />}
@@ -47,7 +47,7 @@ export default function ExpenseList() {
         <div className="text-center py-12 text-white/30">
           <p className="text-4xl mb-3">🧾</p>
           <p className="text-sm">
-            {isLocalMode ? 'No se encontraron gastos' : 'No expenses found'}
+            {isLocalMode ? 'No se encontraron movimientos' : 'No movements found'}
           </p>
         </div>
       ) : (

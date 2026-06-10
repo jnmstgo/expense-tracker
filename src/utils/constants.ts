@@ -1,6 +1,6 @@
 import type { ExpenseCategory } from '@/types';
 
-export const CURRENCY_OPTIONS = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'MXN', 'BRL'];
+export const CURRENCY_OPTIONS = ['ARS', 'USD'];
 
 export const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
   'Gasto fijo':      '#ef4444',
