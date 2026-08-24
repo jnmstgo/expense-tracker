@@ -19,12 +19,12 @@ export default function MainPage() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isFixedModalOpen, setIsFixedModalOpen] = useState(false);
 
-  // Global mount load
+  // Global mount load and token refresh sync
   useEffect(() => {
     if (user) {
       loadExpenses();
     }
-  }, [user?.spreadsheetId]);
+  }, [user?.spreadsheetId, user?.accessToken]);
 
   // Activa la sincronización en segundo plano y eventos de reconexión
   useOfflineSync();

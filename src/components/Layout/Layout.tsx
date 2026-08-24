@@ -3,6 +3,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
 import { useOnlineStatus } from '@/hooks/useOffline';
 import Notification from '@/components/UI/Notification';
+import { useAuth } from '@/hooks/useAuth';
 import { useExpenseStore } from '@/store/expenseStore';
 import SettingsModal from './SettingsModal';
 
@@ -10,6 +11,7 @@ interface Props { children: ReactNode }
 
 export default function Layout({ children }: Props) {
   const { user, logout } = useAuthStore();
+  const { isTokenValid, refreshToken } = useAuth();
   const { activeTab, setTab, isLocalMode, isFamilyMode, toggleFamilyMode } = useUiStore();
   const isOnline = useOnlineStatus();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -58,11 +60,20 @@ export default function Layout({ children }: Props) {
           <div className="flex items-center gap-3">
             <span className="text-xl">💳</span>
             <span className="font-bold text-white/90 tracking-tight">Expense AI</span>
-            {!isOnline && (
+            {!isOnline ? (
               <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full">
                 {isLocalMode ? 'Desconectado' : 'Offline'}
               </span>
-            )}
+            ) : !isTokenValid() ? (
+              <button
+                onClick={() => refreshToken(true)}
+                className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-xs font-medium text-amber-300 transition-all cursor-pointer shadow-sm"
+                title={isLocalMode ? 'Token de Google pausado. Clic para sincronizar' : 'Google token paused. Click to sync'}
+              >
+                <span>⚡</span>
+                <span className="hidden sm:inline">{isLocalMode ? 'Sincronizar Google' : 'Sync Google'}</span>
+              </button>
+            ) : null}
           </div>
           
           <div className="flex items-center gap-3 relative">

@@ -118,15 +118,18 @@ flowchart LR
 
 ---
 
-## 4. Solución al Bug de Sincronización y Doble Login
+## 4. Arquitectura de Sesiones Permanentes y Renovación Silenciosa de Token
 
 ### Problema Anterior:
-1. Al expirar la sesión de Google OAuth (dura 1 hora), la app no sabía refrescar el token en segundo plano y redirigía al usuario a la pantalla de login.
-2. Durante este re-login automático/One Tap, la app inicializaba temporalmente al usuario con `spreadsheetId: null`.
-3. Esto obligaba a la app a buscar de nuevo en Google Drive un archivo llamado `'AI Expense Tracker'`.
-4. En el caso del familiar invitado, la búsqueda no siempre encontraba el archivo compartido de forma instantánea. Al no encontrarlo, la app **creaba una nueva hoja de cálculo limpia** en su propio Drive. Como consecuencia, el familiar dejaba de ver los gastos compartidos del creador.
+1. Al expirar la validez del token de Google OAuth (que dura 1 hora), `App.tsx` evaluaba que la sesión no era válida (`!isTokenValid()`). Si el refresco silencioso no respondía en 6 segundos (por ejemplo por políticas de bloqueo de popups del navegador), la aplicación redirigía al usuario a la pantalla de login (`LoginPage`).
+2. El usuario sentía que la sesión se cerraba sola todos los días o cada pocas horas.
+3. Además, si el proyecto de Google Cloud estaba en modo "Testing", Google vencía los permisos cada 7 días obligando a re-aprobar el consentimiento.
 
 ### Solución Implementada:
-1. **Preservación de ID de Hoja:** Al inicializarse el proceso de re-auth, la aplicación valida si el usuario que está intentando re-logearse es el mismo que ya estaba en sesión. Si es así, **mantiene intacto su `spreadsheetId` guardado** (sin resetearlo a `null`).
-2. **Reutilización del ID Existente:** En el callback de token de Google, la app prioriza el `spreadsheetId` que ya tiene en memoria. Solo si no tiene ninguno (usuario nuevo) llama a la API de Drive para buscar o crear una hoja nueva.
-3. **Filtro de Carga en Segundo Plano (Silent Re-Auth):** Se modificó `App.tsx` para que, en lugar de arrojar al usuario a la pantalla de login cuando expire el token, muestre una pantalla de carga sutil ("Sincronizando sesión...") mientras refresca el token con Google de manera silenciosa. Si se refresca con éxito en menos de 6 segundos, el usuario entra directo a la app sin interrupción ni clics adicionales.
+1. **Sesión Permanente (Offline-First Real):** En [`App.tsx`](file:///mnt/c/js/proyects/my-expense-tracker/src/App.tsx), el acceso a la aplicación depende exclusivamente de si existe un objeto `user` guardado en `localStorage`. La app **nunca** se cierra sola ni redirige a la pantalla de inicio de sesión, permitiendo acceso inmediato e ininterrumpido a todos los gastos en caché, gráficos y formularios. Solo se sale de la app si el usuario hace clic explícitamente en "Cerrar Sesión".
+2. **Refresco Silencioso en Segundo Plano:**
+   - En [`authService.ts`](file:///mnt/c/js/proyects/my-expense-tracker/src/services/authService.ts) y [`useAuth.ts`](file:///mnt/c/js/proyects/my-expense-tracker/src/hooks/useAuth.ts), `requestAccessToken` envía el parámetro `hint: user.email` y `prompt: ''`. Esto le indica a Google qué cuenta autorizar sin desplegar el selector de cuentas ni pedir permisos de nuevo.
+   - Se ejecuta un comprobador periódico cada 60 segundos y cada vez que el usuario vuelve a enfocar la pestaña del navegador (`visibilitychange` / `focus`), renovando el token 5 minutos antes de que expire.
+3. **Botón de Reconexión No Intrusivo:**
+   - Si por restricciones de seguridad del navegador el refresco silencioso en segundo plano requiriera un clic del usuario, la app muestra un discreto botón `⚡ Sincronizar Google` en la barra superior ([`Layout.tsx`](file:///mnt/c/js/proyects/my-expense-tracker/src/components/Layout/Layout.tsx)). Al presionarlo (gesto directo del usuario), el token se renueva en 1 segundo sin pedir permisos y sincroniza automáticamente las hojas de cálculo.
+4. **Permisos Permanentes en Google Cloud:** Para evitar que Google pida aceptar permisos cada 7 días, el proyecto en Google Cloud Console debe estar publicado en estado **"In Production" (En producción)**.

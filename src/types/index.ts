@@ -14,7 +14,7 @@ export interface GoogleTokenResponse {
 }
 
 export interface GoogleTokenClient {
-  requestAccessToken: (options?: { prompt?: string }) => void;
+  requestAccessToken: (options?: { prompt?: string; hint?: string }) => void;
   callback: (response: GoogleTokenResponse) => void;
 }
 

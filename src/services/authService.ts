@@ -33,7 +33,7 @@ export function initGoogleAuth(
         picture: (payload['picture'] as string) || '',
       });
     },
-    auto_select: false,
+    auto_select: true,
     cancel_on_tap_outside: true,
   });
 
@@ -42,16 +42,20 @@ export function initGoogleAuth(
     scope: SCOPES,
     callback: onToken,
     error_callback: err => {
-      console.error('OAuth2 token error:', err.type);
+      console.warn('OAuth2 token error:', err.type);
     },
   });
 
   (window as any).googleAuthInitialized = true;
 }
 
-export function requestAccessToken(): void {
+export function requestAccessToken(hintEmail?: string, prompt = ''): void {
   if (!tokenClient) throw new Error('Auth not initialised');
-  tokenClient.requestAccessToken({ prompt: '' });
+  const options: { prompt: string; hint?: string } = { prompt };
+  if (hintEmail) {
+    options.hint = hintEmail;
+  }
+  tokenClient.requestAccessToken(options);
 }
 
 export function promptSignIn(): void {
